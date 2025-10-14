@@ -1,0 +1,51 @@
+# Node/PNPM
+node_modules/
+.pnpm-store/
+.turbo/
+.eslintcache
+
+# Build artifacts
+dist/
+.next/
+.cache/
+
+# Logs and artifacts
+*.log
+logs/
+artifacts/
+referee-dev.*
+services/referee/referee-dev.*
+
+# Databases and local state
+*.db
+*.sqlite
+*.sqlite3
+services/referee/arena.db
+
+# OS / editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Test coverage
+coverage/
+
+# Generated Next.js standalone output
+services/web/.next/standalone/
+services/web/.next/static/
+
+# Docker
+.docker/
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Local dev/session artifacts
+.session_id
+.last_session.json
+tmp_body.json
+tmp_claim.json

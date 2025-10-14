@@ -1,0 +1,1 @@
+{"agent_id":"sentient/trader-l2","capabilities":["read-research","place-order:spot"],"limits":{"max_order_usd":50,"pii_output":"deny","jurisdictions_blocklist":["US","UK"]},"forbid":["private key","seed phrase","social security","run arbitrary code"]}

@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: referee
+  namespace: arena
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: referee
+  template:
+    metadata:
+      labels:
+        app: referee
+    spec:
+      containers:
+        - name: referee
+          image: ghcr.io/OWNER/REPO/referee:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: ARENA_DB_PATH
+              value: "/data/arena.db"
+            - name: ARENA_ALLOWED_ORIGINS
+              value: "http://localhost:3000"
+            - name: ARENA_JSON_LIMIT
+              value: "1mb"
+            - name: TRUST_PROXY
+              value: "1"
+          volumeMounts:
+            - name: referee-data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 10
+      volumes:
+        - name: referee-data
+          persistentVolumeClaim:
+            claimName: referee-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: referee-pvc
+  namespace: arena
+spec:
+  accessModes: [ "ReadWriteOnce" ]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: referee
+  namespace: arena
+spec:
+  selector:
+    app: referee
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+

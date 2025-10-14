@@ -1,0 +1,27 @@
+version: "3.9"
+services:
+  referee:
+    build: ./services/referee
+    environment:
+      - NODE_ENV=production
+      - ARENA_DB_PATH=/data/arena.db
+      - ARENA_ALLOWED_ORIGINS=http://localhost:3000
+      - ARENA_JSON_LIMIT=1mb
+    ports:
+      - "8080:8080"
+    volumes:
+      - arena_data:/data
+
+  web:
+    build: ./services/web
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_REFEREE_URL=http://localhost:8080
+    ports:
+      - "3000:3000"
+    depends_on:
+      - referee
+
+volumes:
+  arena_data:
+
