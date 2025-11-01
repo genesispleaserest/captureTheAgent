@@ -49,3 +49,7 @@ services/web/.next/static/
 .last_session.json
 tmp_body.json
 tmp_claim.json
+
+# Cursor editor
+.cursor/
+**/.cursor/
