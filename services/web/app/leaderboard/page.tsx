@@ -16,12 +16,14 @@ type LeaderboardResponse = {
     created_at: number;
     regression_path: string | null;
     regression_url: string | null;
+    user_id?: string | null;
+    user_avatar?: string | null;
   }>;
 };
 
-// Allow overriding API base for external testing via NEXT_PUBLIC_REFEREE_URL
-const API_BASE = process.env.NEXT_PUBLIC_REFEREE_URL ?? "http://localhost:8080";
-const LEADERBOARD_ENDPOINT = `${API_BASE}/leaderboard`;
+// Prefer same-origin proxy to avoid mixed content / CORS issues.
+// next.config rewrites '/api/*' to the actual API base.
+const LEADERBOARD_ENDPOINT = `/api/leaderboard`;
 
 export default function LeaderboardPage() {
   const [data, setData] = useState<LeaderboardResponse | null>(null);
@@ -39,8 +41,10 @@ export default function LeaderboardPage() {
           method: "GET",
           signal: controller.signal,
           headers: {
-            "Accept": "application/json"
-          }
+            Accept: "application/json",
+            // Avoid ngrok interstitial page that returns HTML instead of JSON
+            "ngrok-skip-browser-warning": "true",
+          },
         });
 
         if (!res.ok) {
@@ -62,7 +66,7 @@ export default function LeaderboardPage() {
 
     const interval = setInterval(() => {
       void load();
-    }, 15_000);
+    }, 15000);
 
     return () => {
       controller.abort();
@@ -70,11 +74,14 @@ export default function LeaderboardPage() {
     };
   }, []);
 
-  const stats = useMemo(() => ({
-    total: data?.stats?.total ?? 0,
-    confirmed: data?.stats?.confirmed ?? 0,
-    pending: data?.stats?.pending ?? 0
-  }), [data]);
+  const stats = useMemo(
+    () => ({
+      total: data?.stats?.total ?? 0,
+      confirmed: data?.stats?.confirmed ?? 0,
+      pending: data?.stats?.pending ?? 0,
+    }),
+    [data]
+  );
 
   const recentKills = data?.recent_kills ?? [];
 
@@ -90,7 +97,7 @@ export default function LeaderboardPage() {
 
       {loading && (
         <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-6">
-          <p className="text-sm text-slate-300">Loading leaderboard…</p>
+          <p className="text-sm text-slate-300">Loading leaderboard...</p>
         </div>
       )}
 
@@ -135,15 +142,16 @@ export default function LeaderboardPage() {
                 >
                   <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div className="space-y-1">
+                      {kill.user_avatar && (
+                        <img src={kill.user_avatar} alt="avatar" className="h-7 w-7 rounded" />
+                      )}
                       <p className="text-sm font-medium text-white">
                         Claim <span className="text-slate-300">{kill.claim_id}</span>
                       </p>
                       <p className="text-xs text-slate-400">
                         Session <span className="text-slate-200">{kill.session_id}</span>
                       </p>
-                      <p className="text-xs text-slate-500">
-                        {formatTimestamp(kill.created_at)}
-                      </p>
+                      <p className="text-xs text-slate-500">{formatTimestamp(kill.created_at)}</p>
                     </div>
                     <div className="flex flex-col items-start gap-3 md:items-end">
                       <span
@@ -170,6 +178,12 @@ export default function LeaderboardPage() {
                       ) : (
                         <span className="text-xs text-slate-500">No regression pack</span>
                       )}
+                      <a
+                        href={`/verdict/${kill.verdict_id}`}
+                        className="inline-flex items-center gap-1 text-xs font-medium text-slate-300 hover:text-white"
+                      >
+                        View details
+                      </a>
                     </div>
                   </div>
                 </li>
@@ -185,7 +199,7 @@ export default function LeaderboardPage() {
 function StatCard({
   label,
   value,
-  accent
+  accent,
 }: {
   label: string;
   value: number;
@@ -195,9 +209,7 @@ function StatCard({
     <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 shadow-sm">
       <p className="text-sm text-slate-400">{label}</p>
       <p className="mt-4 text-4xl font-semibold text-white">{value}</p>
-      <span className={`mt-4 inline-flex rounded-full px-3 py-1 text-xs font-medium ${accent}`}>
-        {label}
-      </span>
+      <span className={`mt-4 inline-flex rounded-full px-3 py-1 text-xs font-medium ${accent}`}>{label}</span>
     </div>
   );
 }
@@ -210,7 +222,7 @@ function formatTimestamp(timestamp: number | null | undefined): string {
 }
 
 function severityTone(severity: string | null | undefined): string {
-  switch (severity?.toUpperCase()) {
+  switch ((severity || "").toUpperCase()) {
     case "CRITICAL":
       return "bg-rose-500/20 text-rose-300 border border-rose-500/40";
     case "HIGH":
@@ -223,3 +235,4 @@ function severityTone(severity: string | null | undefined): string {
       return "bg-slate-700/40 text-slate-300 border border-slate-600/40";
   }
 }
+

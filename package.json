@@ -1,0 +1,11 @@
+{
+  "name": "capture-the-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "",
+  "scripts": {
+    "dev": "echo Define your dev script here",
+    "build": "echo Define your build script here",
+    "start": "echo Define your start script here"
+  }
+}

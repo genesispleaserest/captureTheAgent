@@ -1,9 +1,11 @@
 import { runInSandbox } from "@arena/sandbox";
 import { AttackClaim } from "@arena/core";
 import { detectPolicyJailbreak, detectSpendCap } from "@arena/core";
-import { randomUUID as uuid } from "crypto";
+import { randomUUID as uuid, createHmac, createHash } from "crypto";
 import { exportRegressionPackAsync } from "./regression.js";
 import { getDatabase } from "./db.js";
+import fs from "fs";
+import path from "path";
 
 // Initialize SQLite database
 const db = getDatabase();
@@ -12,6 +14,9 @@ interface ReproResult {
   reproduced: boolean;
   severity: string;
   run: any;
+  detectorsVersion: string;
+  envHash: string;
+  evidence: any;
 }
 
 export async function autoRepro(claim: AttackClaim, policy: any): Promise<ReproResult> {
@@ -57,7 +62,11 @@ export async function autoRepro(claim: AttackClaim, policy: any): Promise<ReproR
     totalSpendUSD: totalSpend
   };
 
-  return { reproduced: anyViolation, severity, run };
+  const detectorsVersion = computeDetectorsVersion();
+  const envHash = await computeEnvHash("./fixtures");
+  const evidence = buildEvidence(run.detectors);
+
+  return { reproduced: anyViolation, severity, run, detectorsVersion, envHash, evidence };
 }
 
 function estimateSpendUSD(transcript: Array<{ role: string; content: string }>): number {
@@ -129,8 +138,8 @@ function saveRun(claimId: string, run: any, seed: number): string {
 function saveVerdict(claimId: string, runId: string, result: ReproResult, regressionPath?: string): string {
   const verdictId = uuid();
   const stmt = db.prepare(`
-    INSERT INTO verdicts (id, claim_id, reproduced, severity, run_id, regression_path)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO verdicts (id, claim_id, reproduced, severity, run_id, regression_path, detectors_version, env_hash, evidence)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   stmt.run(
     verdictId,
@@ -138,7 +147,10 @@ function saveVerdict(claimId: string, runId: string, result: ReproResult, regres
     result.reproduced ? 1 : 0,
     result.severity,
     runId,
-    regressionPath || null
+    regressionPath || null,
+    result.detectorsVersion,
+    result.envHash,
+    JSON.stringify(result.evidence)
   );
   return verdictId;
 }
@@ -184,10 +196,26 @@ async function processClaim(claim: ClaimRow): Promise<void> {
     
     // Save verdict
     const verdictId = saveVerdict(claim.id, runId, result, regressionPath);
-    
+
     updateClaimStatus(claim.id, 'completed');
-    
+
     console.log(`[WORKER] Claim ${claim.id} completed - Reproduced: ${result.reproduced}, Severity: ${result.severity}`);
+
+    // Fire webhooks for confirmed claims
+    if (result.reproduced) {
+      try {
+        await notifyWebhooks('confirmed_claim', {
+          claim_id: claim.id,
+          verdict_id: verdictId,
+          reproduced: result.reproduced,
+          severity: result.severity,
+          regression_path: regressionPath || null,
+          created_at: Math.floor(Date.now() / 1000)
+        });
+      } catch (err) {
+        console.error(`[WORKER] Webhook notify failed for claim ${claim.id}:`, err);
+      }
+    }
     
   } catch (error) {
     console.error(`[WORKER] Error processing claim ${claim.id}:`, error);
@@ -260,4 +288,84 @@ export function getRecentVerdicts(limit: number = 10) {
     LIMIT ?
   `);
   return stmt.all(limit);
+}
+
+function computeDetectorsVersion(): string {
+  try {
+    const corePkg = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), "packages/arena-core/package.json"), 'utf-8'));
+    const sandboxPkg = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), "services/sandbox/package.json"), 'utf-8'));
+    const refereePkg = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), "services/referee/package.json"), 'utf-8'));
+    return `core@${corePkg.version}; sandbox@${sandboxPkg.version}; referee@${refereePkg.version}`;
+  } catch {
+    return `core@unknown; sandbox@unknown; referee@unknown`;
+  }
+}
+
+async function computeEnvHash(fixturesDir: string): Promise<string> {
+  const h = createHash('sha256');
+  try {
+    h.update(`node:${process.version}`);
+    const rootPkg = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'package.json'), 'utf-8'));
+    h.update(`${rootPkg?.name || ''}:${rootPkg?.version || ''}`);
+  } catch {}
+  try {
+    const files = await fs.promises.readdir(fixturesDir).catch(() => [] as string[]);
+    for (const f of files) {
+      const p = path.join(fixturesDir, f);
+      const stat = await fs.promises.stat(p).catch(() => null as any);
+      if (stat && stat.isFile()) {
+        h.update(`${f}:${stat.size}:${Math.floor(stat.mtimeMs)}`);
+      }
+    }
+  } catch {}
+  return h.digest('hex');
+}
+
+function maskCanary(c: string): string {
+  return c.replace(/.(?=.{2})/g, '*');
+}
+
+function buildEvidence(detectors: any) {
+  return {
+    canary: (detectors?.canary || []).map((c: string) => maskCanary(c)),
+    jailbreak: detectors?.jailbreak || [],
+    spendCap: detectors?.spendCap || [],
+    totalSpendUSD: detectors?.totalSpendUSD ?? 0
+  };
+}
+
+// --- Webhooks ---
+interface WebhookRow { id: string; url: string; secret: string; events: string }
+
+function listWebhooks(): WebhookRow[] {
+  const stmt = db.prepare(`SELECT id, url, secret, events FROM webhooks`);
+  return stmt.all() as WebhookRow[];
+}
+
+async function notifyWebhooks(event: string, payload: any) {
+  const hooks = listWebhooks();
+  const body = JSON.stringify({ event, payload });
+  for (const h of hooks) {
+    try {
+      let subscribe = false;
+      try {
+        const evs = JSON.parse(h.events);
+        subscribe = Array.isArray(evs) ? evs.includes(event) : false;
+      } catch {}
+      if (!subscribe) continue;
+
+      const sig = createHmac('sha256', h.secret).update(body).digest('hex');
+      await fetch(h.url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Arena-Event': event,
+          'X-Arena-Signature': `sha256=${sig}`,
+        },
+        body
+      });
+    } catch (err) {
+      console.error(`[WORKER] Webhook POST failed for ${h.url}:`, err);
+    }
+  }
 }

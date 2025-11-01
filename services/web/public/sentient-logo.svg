@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Sentient logo">
+  <defs>
+    <style>
+      .bg{fill:#ff5c8a}
+      .tile{fill:#fff}
+    </style>
+  </defs>
+  <rect class="bg" x="0" y="0" width="400" height="400" rx="40"/>
+  <!-- simple geometric mark approximating provided logo -->
+  <!-- top row -->
+  <rect class="tile" x="95" y="70" width="60" height="60" rx="12"/>
+  <rect class="tile" x="245" y="70" width="60" height="60" rx="12"/>
+  <!-- middle ring -->
+  <rect class="tile" x="60" y="170" width="60" height="60" rx="12"/>
+  <rect class="tile" x="170" y="170" width="60" height="60" rx="12"/>
+  <rect class="tile" x="280" y="170" width="60" height="60" rx="12"/>
+  <!-- bottom row -->
+  <rect class="tile" x="95" y="270" width="60" height="60" rx="12"/>
+  <rect class="tile" x="245" y="270" width="60" height="60" rx="12"/>
+  <!-- inner corners to approximate motif -->
+  <rect class="tile" x="140" y="120" width="60" height="60" rx="12"/>
+  <rect class="tile" x="200" y="230" width="60" height="60" rx="12" opacity="0"/>
+</svg>
