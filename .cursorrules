@@ -1,7 +1,0 @@
-- Always generate TypeScript (ESM) and pnpm workspaces.
-- Keep dependencies minimal: express, zod, pino, sqlite3, better-sqlite3, uuid, playwright, jsdom, yaml, jose.
-- Testing: vitest + supertest.
-- Never add external network calls in sandbox; use local "synthetic internet".
-- Write small files; prefer composition over inheritance.
-- All APIs must be documented with OpenAPI comments.
-
